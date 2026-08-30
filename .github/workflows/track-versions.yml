@@ -57,25 +57,16 @@ jobs:
       - name: Check out calling repository
         uses: actions/checkout@v4
 
-      # github.workflow_ref looks like "owner/repo/.github/workflows/track-versions.yml@refs/tags/v1"
-      # so by default the scripts checkout tracks the exact version the caller pinned.
-      - name: Resolve tracker repo and ref
-        id: tracker
-        env:
-          WORKFLOW_REF: ${{ github.workflow_ref }}
-          OVERRIDE_REPO: ${{ inputs.tracker-repo }}
-          OVERRIDE_REF: ${{ inputs.tracker-ref }}
-        run: |
-          repo="${WORKFLOW_REF%%/.github/*}"
-          ref="${WORKFLOW_REF##*@}"
-          echo "repo=${OVERRIDE_REPO:-$repo}" >> "$GITHUB_OUTPUT"
-          echo "ref=${OVERRIDE_REF:-$ref}" >> "$GITHUB_OUTPUT"
-
+      # The github context here is the CALLER's (workflow_ref points at the
+      # consumer repo), so the tracker repo name must be spelled out.
+      # job_workflow_sha is the one exception: it is the commit of THIS
+      # reusable workflow, so the scripts always match the ref the caller
+      # pinned. Forks must override tracker-repo (or edit the default below).
       - name: Check out tracker scripts
         uses: actions/checkout@v4
         with:
-          repository: ${{ steps.tracker.outputs.repo }}
-          ref: ${{ steps.tracker.outputs.ref }}
+          repository: ${{ inputs.tracker-repo != '' && inputs.tracker-repo || 'Richman-Tan/dependency-version-tracker' }}
+          ref: ${{ inputs.tracker-ref != '' && inputs.tracker-ref || github.job_workflow_sha }}
           path: .dep-tracker
           token: ${{ secrets.TOOLING_REPO_TOKEN || github.token }}
 
