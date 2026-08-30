@@ -14,9 +14,9 @@ on:
         type: string
         default: tracked-packages.json
       sheet-id:
-        description: Google spreadsheet ID (from the sheet URL)
+        description: Google spreadsheet ID (from the sheet URL); may be empty for dry runs
         type: string
-        required: true
+        default: ""
       sheet-tab:
         description: Sheet tab to overwrite
         type: string
@@ -38,8 +38,8 @@ on:
         default: false
     secrets:
       GOOGLE_SERVICE_ACCOUNT_KEY:
-        description: Full JSON of the Google service-account key
-        required: true
+        description: Full JSON of the Google service-account key (needed unless dry-run)
+        required: false
       TOOLING_REPO_TOKEN:
         description: Token able to read the tracker repo, if it is private
         required: false
