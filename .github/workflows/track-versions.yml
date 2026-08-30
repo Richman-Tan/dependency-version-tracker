@@ -84,8 +84,11 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
 
+      # working-directory, not npm --prefix: npm ci resolves the lockfile from
+      # the cwd's project root, so --prefix finds the consumer's (absent) lock.
       - name: Install tracker dependencies
-        run: npm ci --prefix .dep-tracker/scripts --no-audit --no-fund
+        working-directory: .dep-tracker/scripts
+        run: npm ci --no-audit --no-fund
 
       - name: Extract versions and sync sheet
         env:
