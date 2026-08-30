@@ -1,0 +1,28 @@
+{
+  "npm": [
+    { "name": "react" },
+    { "name": "react-router-dom" },
+    { "name": "@mui/material" },
+    { "name": "@tanstack/react-query" },
+    { "name": "typescript" },
+    { "name": "webpack" },
+    { "name": "vitest" },
+    { "name": "@sal/portal", "source": "private" },
+    { "name": "@sal/login", "source": "private" }
+  ],
+  "nuget": [
+    { "name": "Microsoft.EntityFrameworkCore.SqlServer" },
+    { "name": "Npgsql.EntityFrameworkCore.PostgreSQL" },
+    { "name": "Serilog.AspNetCore" },
+    { "name": "Swashbuckle.AspNetCore" },
+    { "name": "Hangfire.Core" },
+    { "name": "Octokit" },
+    { "name": "GitVersion.MsBuild" },
+    { "name": "Sandfield.Portal", "source": "private" },
+    { "name": "Sandfield.WebAPI", "source": "private" }
+  ],
+  "defaults": {
+    "npmManifests": ["src/SAL.SecurityDashboard.Web/ClientApp/package.json"],
+    "nugetManifests": ["src/**/*.csproj"]
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "dependency-version-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Extracts curated npm/NuGet package versions from a repo, compares against registries, and syncs a Google Sheet.",
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "dependencies": {
+    "fast-xml-parser": "^4.5.0"
+  }
+}

@@ -1,0 +1,104 @@
+# Reusable workflow: extract curated package versions from the calling repo,
+# compare against registries, and sync a Google Sheet.
+#
+# Note: schedule/cron cannot live here — a workflow_call workflow runs on the
+# CALLER's triggers, so the consumer's stub workflow owns the cron. See
+# examples/caller-workflow.yml.
+name: Track dependency versions
+
+on:
+  workflow_call:
+    inputs:
+      config-path:
+        description: Path to tracked-packages.json in the calling repo
+        type: string
+        default: tracked-packages.json
+      sheet-id:
+        description: Google spreadsheet ID (from the sheet URL)
+        type: string
+        required: true
+      sheet-tab:
+        description: Sheet tab to overwrite
+        type: string
+        default: Dependencies
+      tracker-repo:
+        description: owner/name of the tracker repo (default derived from workflow_ref)
+        type: string
+        default: ""
+      tracker-ref:
+        description: Ref of the tracker repo to run scripts from (default same ref as this workflow)
+        type: string
+        default: ""
+      node-version:
+        type: string
+        default: "22"
+      dry-run:
+        description: Print the table without writing the sheet
+        type: boolean
+        default: false
+    secrets:
+      GOOGLE_SERVICE_ACCOUNT_KEY:
+        description: Full JSON of the Google service-account key
+        required: true
+      TOOLING_REPO_TOKEN:
+        description: Token able to read the tracker repo, if it is private
+        required: false
+      PRIVATE_NPM_TOKEN:
+        description: PAT for the private npm feed (enables private lookups)
+        required: false
+      PRIVATE_NUGET_TOKEN:
+        description: PAT for the private NuGet feed (enables private lookups)
+        required: false
+
+jobs:
+  track:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out calling repository
+        uses: actions/checkout@v4
+
+      # github.workflow_ref looks like "owner/repo/.github/workflows/track-versions.yml@refs/tags/v1"
+      # so by default the scripts checkout tracks the exact version the caller pinned.
+      - name: Resolve tracker repo and ref
+        id: tracker
+        env:
+          WORKFLOW_REF: ${{ github.workflow_ref }}
+          OVERRIDE_REPO: ${{ inputs.tracker-repo }}
+          OVERRIDE_REF: ${{ inputs.tracker-ref }}
+        run: |
+          repo="${WORKFLOW_REF%%/.github/*}"
+          ref="${WORKFLOW_REF##*@}"
+          echo "repo=${OVERRIDE_REPO:-$repo}" >> "$GITHUB_OUTPUT"
+          echo "ref=${OVERRIDE_REF:-$ref}" >> "$GITHUB_OUTPUT"
+
+      - name: Check out tracker scripts
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.tracker.outputs.repo }}
+          ref: ${{ steps.tracker.outputs.ref }}
+          path: .dep-tracker
+          token: ${{ secrets.TOOLING_REPO_TOKEN || github.token }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+
+      - name: Install tracker dependencies
+        run: npm ci --prefix .dep-tracker/scripts --no-audit --no-fund
+
+      - name: Extract versions and sync sheet
+        env:
+          GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
+          PRIVATE_NPM_REGISTRY_URL: ${{ vars.PRIVATE_NPM_REGISTRY_URL }}
+          PRIVATE_NPM_TOKEN: ${{ secrets.PRIVATE_NPM_TOKEN }}
+          PRIVATE_NUGET_INDEX_URL: ${{ vars.PRIVATE_NUGET_INDEX_URL }}
+          PRIVATE_NUGET_TOKEN: ${{ secrets.PRIVATE_NUGET_TOKEN }}
+        run: >
+          node .dep-tracker/scripts/track-versions.js
+          --config "${{ inputs.config-path }}"
+          --repo-root .
+          --sheet-id "${{ inputs.sheet-id }}"
+          --sheet-tab "${{ inputs.sheet-tab }}"
+          --summary-file "$GITHUB_STEP_SUMMARY"
+          ${{ inputs.dry-run && '--dry-run' || '' }}

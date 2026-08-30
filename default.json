@@ -1,0 +1,32 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "Shared Renovate preset: automerge patch, PR minor, major behind dashboard approval.",
+  "extends": ["config:recommended", ":dependencyDashboard", ":rebaseStalePrs"],
+  "prConcurrentLimit": 5,
+  "ignorePaths": ["**/node_modules/**", "**/bin/**", "**/obj/**"],
+  "packageRules": [
+    {
+      "description": "Patch updates: automerge (merges directly unless branch protection requires checks).",
+      "matchUpdateTypes": ["patch"],
+      "automerge": true,
+      "platformAutomerge": true
+    },
+    {
+      "description": "Minor updates: open a PR for review.",
+      "matchUpdateTypes": ["minor"],
+      "automerge": false,
+      "labels": ["renovate-minor"]
+    },
+    {
+      "description": "Major updates: only after ticking the checkbox on the Dependency Dashboard issue.",
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true,
+      "labels": ["renovate-major"]
+    },
+    {
+      "description": "Private-feed packages are disabled by default; enable per-repo with hostRules + an encrypted Azure Artifacts token.",
+      "matchPackageNames": ["/^@sal//", "/^Sandfield\\./"],
+      "enabled": false
+    }
+  ]
+}

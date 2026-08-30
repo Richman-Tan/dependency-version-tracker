@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install
+        run: npm ci --prefix scripts --no-audit --no-fund
+
+      - name: Unit tests
+        run: npm test --prefix scripts
+
+      - name: Dry-run smoke test against fixtures
+        run: >
+          node scripts/track-versions.js
+          --config scripts/test/fixtures/tracked-packages.sample.json
+          --repo-root scripts/test/fixtures
+          --dry-run
+          --summary-file "$GITHUB_STEP_SUMMARY"

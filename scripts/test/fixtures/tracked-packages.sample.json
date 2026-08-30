@@ -1,0 +1,15 @@
+{
+  "npm": [
+    { "name": "react" },
+    { "name": "typescript" },
+    { "name": "@sal/portal", "source": "private" }
+  ],
+  "nuget": [
+    { "name": "GitVersion.MsBuild" },
+    { "name": "Sandfield.Portal", "source": "private" }
+  ],
+  "defaults": {
+    "npmManifests": ["package.sample.json"],
+    "nugetManifests": ["**/*.csproj"]
+  }
+}
