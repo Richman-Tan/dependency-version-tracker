@@ -16,6 +16,7 @@
  * failures become "lookup-failed" rows and warnings.
  */
 import { appendFileSync } from "node:fs";
+import { formatError, formatWarning, runUrl } from "./lib/ci.js";
 import { loadConfig } from "./lib/config.js";
 import { createMsbuildContext } from "./lib/msbuild.js";
 import { extractNpmVersions } from "./lib/npm-manifest.js";
@@ -36,7 +37,7 @@ import { resolveManifests } from "./lib/walk.js";
 const LOOKUP_CONCURRENCY = 8;
 
 main().catch((err) => {
-  console.error(`::error::${err.message}`);
+  console.error(formatError(err.message));
   process.exit(1);
 });
 
@@ -214,13 +215,7 @@ function nugetLookup(pkg) {
 }
 
 function emitWarning(message) {
-  console.warn(process.env.GITHUB_ACTIONS ? `::warning::${message}` : `WARNING: ${message}`);
-}
-
-function runUrl() {
-  const { GITHUB_SERVER_URL, GITHUB_REPOSITORY, GITHUB_RUN_ID } = process.env;
-  if (!GITHUB_SERVER_URL || !GITHUB_REPOSITORY || !GITHUB_RUN_ID) return null;
-  return `${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}`;
+  console.warn(formatWarning(message));
 }
 
 function printConsoleTable(table) {

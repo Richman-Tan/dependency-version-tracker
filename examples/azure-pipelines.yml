@@ -1,0 +1,84 @@
+# Copy into an Azure DevOps repo (e.g. as dependency-report.yml) and create a
+# pipeline pointing at it.
+#
+# The tracker lives on GitHub but this needs no GitHub service connection: the
+# repo is public, so the pipeline clones it over plain HTTPS at the v1 tag. The
+# extraction script is ordinary Node with no GitHub coupling, so the same code
+# that runs in Actions runs here.
+#
+# Setup in Azure DevOps:
+#   1. Pipeline -> Edit -> Variables:
+#        DEPENDENCY_SHEET_ID  = the id from the Google Sheet URL
+#   2. Add GOOGLE_SERVICE_ACCOUNT_KEY as a SECRET variable (the whole JSON key).
+#      Secret variables are not exposed to scripts automatically, which is why
+#      it is mapped explicitly under env: below.
+#   3. Commit a tracked-packages.json at the repo root.
+#
+# Run it once with dryRun = true (the default): that needs no Google
+# credentials at all and prints the table plus the manifests it matched.
+
+name: Dependency version report
+
+trigger: none # report on a schedule and on demand, not on every commit
+
+schedules:
+  - cron: "0 18 * * 1-5" # ~06:00-07:00 NZ time, weekdays
+    displayName: Weekday dependency report
+    branches:
+      include: [main]
+    always: true # report even when nothing has been committed
+
+parameters:
+  - name: dryRun
+    displayName: "Dry run (print the table, do not write the sheet)"
+    type: boolean
+    default: true
+
+variables:
+  TRACKER_REF: v1 # pin; matches the tag consumers use on the Actions side
+
+pool:
+  vmImage: ubuntu-latest
+
+steps:
+  - checkout: self
+
+  - task: NodeTool@0
+    displayName: Set up Node
+    inputs:
+      versionSpec: "22.x"
+
+  - script: |
+      set -euo pipefail
+      git clone --depth 1 --branch "$TRACKER_REF" \
+        https://github.com/Richman-Tan/dependency-version-tracker.git "$AGENT_TEMPDIRECTORY/tracker"
+      npm ci --no-audit --no-fund --prefix "$AGENT_TEMPDIRECTORY/tracker/scripts"
+    displayName: Fetch tracker
+    workingDirectory: $(Agent.TempDirectory)
+
+  - script: |
+      set -euo pipefail
+      node "$AGENT_TEMPDIRECTORY/tracker/scripts/track-versions.js" \
+        --config tracked-packages.json \
+        --repo-root . \
+        --sheet-id "$SHEET_ID" \
+        --sheet-tab Dependencies \
+        --summary-file "$AGENT_TEMPDIRECTORY/report.md" \
+        ${DRY_RUN:+--dry-run}
+      # Surface the same table on the run's Extensions tab.
+      echo "##vso[task.uploadsummary]$AGENT_TEMPDIRECTORY/report.md"
+    displayName: Extract versions and sync sheet
+    workingDirectory: $(Build.SourcesDirectory)
+    env:
+      # Secret variables must be mapped in explicitly; they are deliberately
+      # not injected into the environment for you.
+      GOOGLE_SERVICE_ACCOUNT_KEY: $(GOOGLE_SERVICE_ACCOUNT_KEY)
+      SHEET_ID: $(DEPENDENCY_SHEET_ID)
+      # Empty rather than "false": ${VAR:+..} tests for non-empty, so the
+      # string "false" would switch the flag on for every run.
+      DRY_RUN: ${{ iif(parameters.dryRun, '1', '') }}
+      # Optional, for private feeds (Azure Artifacts):
+      # PRIVATE_NPM_REGISTRY_URL: $(PRIVATE_NPM_REGISTRY_URL)
+      # PRIVATE_NPM_TOKEN: $(PRIVATE_NPM_TOKEN)
+      # PRIVATE_NUGET_INDEX_URL: $(PRIVATE_NUGET_INDEX_URL)
+      # PRIVATE_NUGET_TOKEN: $(PRIVATE_NUGET_TOKEN)

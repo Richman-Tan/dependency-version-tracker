@@ -180,6 +180,35 @@ To resolve latest versions from Azure Artifacts (or any private feed), set repo
 Packaging → Read). Keep the NuGet URL on **V3** — V2 feeds silently return
 nothing for some APIs.
 
+## Azure DevOps
+
+The extraction script is plain Node driven by CLI flags — nothing in it is
+GitHub-specific — so a repo hosted in Azure Repos runs the same code through
+Azure Pipelines. Copy [`examples/azure-pipelines.yml`](examples/azure-pipelines.yml)
+into the repo and point a pipeline at it. It clones this repo at `v1` over
+plain HTTPS, so **no GitHub service connection is needed** while this repo is
+public.
+
+The two host-specific behaviours adapt automatically
+([`scripts/lib/ci.js`](scripts/lib/ci.js)): warnings and errors are annotated
+as `::warning::` on Actions and `##vso[task.logissue]` on Pipelines, and the
+sheet footer links back to the run on whichever host produced it. Anywhere else
+— a laptop, another CI — both degrade to plain text and no link.
+
+Two differences worth knowing before you commit to this route:
+
+- Secret variables in Azure Pipelines are **not** injected into the environment
+  automatically. `GOOGLE_SERVICE_ACCOUNT_KEY` has to be mapped explicitly under
+  `env:`, which the example does; omit it and the run fails with a missing-key
+  error rather than anything subtler.
+- **Renovate is the real constraint.** The Mend Renovate *GitHub App* does not
+  cover Azure Repos, so automated upgrade PRs there need self-hosted Renovate
+  (typically a scheduled pipeline running the `renovate` CLI with an Azure
+  DevOps PAT). The preset in [`default.json`](default.json) is plain Renovate
+  config and applies unchanged; only the thing that runs it differs. Reporting
+  works today either way — it is only the PR automation that needs the extra
+  piece.
+
 ## Renovate (automated upgrade PRs)
 
 1. Install the [Mend Renovate GitHub App](https://github.com/apps/renovate)
