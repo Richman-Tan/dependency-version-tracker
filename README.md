@@ -71,6 +71,12 @@ npm        @sal/portal         src/App.Web/ClientApp/package.json ^7.4.2   n/a (
   paths, `<prefix>/**/*.<ext>` globs, or `<prefix>/**/<filename>` globs;
   `node_modules`, `bin`, `obj`, `dist` are never walked.
 
+- `source: "private"` marks packages on a private feed. By default their
+  latest-version lookup is skipped (`n/a (private)`); see
+  [Private feeds](#private-feeds) to enable it.
+- NuGet names match case-insensitively. One sheet row per (package, csproj)
+  pair, so version drift across projects is visible.
+
 ### Repos with several sites
 
 A repo with one `package.json` per site is the common case, and
@@ -86,11 +92,6 @@ Prefer the `**/package.json` form over `**/*.json`: the latter also matches
 `tsconfig.json`, `package-lock.json` and every other JSON file in the tree.
 Because the tracked list is curated, adding a site adds rows only for packages
 already being tracked — nothing else leaks in.
-- `source: "private"` marks packages on a private feed. By default their
-  latest-version lookup is skipped (`n/a (private)`); see
-  [Private feeds](#private-feeds) to enable it.
-- NuGet names match case-insensitively. One sheet row per (package, csproj)
-  pair, so version drift across projects is visible.
 
 ## Central Package Management and MSBuild properties
 
@@ -179,35 +180,6 @@ To resolve latest versions from Azure Artifacts (or any private feed), set repo
 `PRIVATE_NPM_TOKEN` / `PRIVATE_NUGET_TOKEN` secrets (an Azure DevOps PAT with
 Packaging → Read). Keep the NuGet URL on **V3** — V2 feeds silently return
 nothing for some APIs.
-
-## Azure DevOps
-
-The extraction script is plain Node driven by CLI flags — nothing in it is
-GitHub-specific — so a repo hosted in Azure Repos runs the same code through
-Azure Pipelines. Copy [`examples/azure-pipelines.yml`](examples/azure-pipelines.yml)
-into the repo and point a pipeline at it. It clones this repo at `v1` over
-plain HTTPS, so **no GitHub service connection is needed** while this repo is
-public.
-
-The two host-specific behaviours adapt automatically
-([`scripts/lib/ci.js`](scripts/lib/ci.js)): warnings and errors are annotated
-as `::warning::` on Actions and `##vso[task.logissue]` on Pipelines, and the
-sheet footer links back to the run on whichever host produced it. Anywhere else
-— a laptop, another CI — both degrade to plain text and no link.
-
-Two differences worth knowing before you commit to this route:
-
-- Secret variables in Azure Pipelines are **not** injected into the environment
-  automatically. `GOOGLE_SERVICE_ACCOUNT_KEY` has to be mapped explicitly under
-  `env:`, which the example does; omit it and the run fails with a missing-key
-  error rather than anything subtler.
-- **Renovate is the real constraint.** The Mend Renovate *GitHub App* does not
-  cover Azure Repos, so automated upgrade PRs there need self-hosted Renovate
-  (typically a scheduled pipeline running the `renovate` CLI with an Azure
-  DevOps PAT). The preset in [`default.json`](default.json) is plain Renovate
-  config and applies unchanged; only the thing that runs it differs. Reporting
-  works today either way — it is only the PR automation that needs the extra
-  piece.
 
 ## Renovate (automated upgrade PRs)
 
