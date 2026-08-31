@@ -2,3 +2,7 @@ node_modules/
 *.log
 .DS_Store
 service-account*.json
+
+# Output of running dotnet build against the sample fixtures
+scripts/test/fixtures/bin/
+scripts/test/fixtures/obj/
