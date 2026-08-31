@@ -68,8 +68,24 @@ npm        @sal/portal         src/App.Web/ClientApp/package.json ^7.4.2   n/a (
 ```
 
 - `manifests` (optional, per package) overrides the ecosystem default. Plain
-  paths or `<prefix>/**/*.<ext>` globs; `node_modules`, `bin`, `obj`, `dist`
-  are never walked.
+  paths, `<prefix>/**/*.<ext>` globs, or `<prefix>/**/<filename>` globs;
+  `node_modules`, `bin`, `obj`, `dist` are never walked.
+
+### Repos with several sites
+
+A repo with one `package.json` per site is the common case, and
+`apps/**/package.json` handles it — one row per (package, site), with the
+`Manifest` column naming which site each row belongs to:
+
+```
+npm  @mui/material  apps/CallerChecker.Web/ClientApp/package.json      ^6.1.0   9.4.0  major
+npm  @mui/material  apps/SecurityDashboard.Web/ClientApp/package.json  ^5.15.0  9.4.0  major
+```
+
+Prefer the `**/package.json` form over `**/*.json`: the latter also matches
+`tsconfig.json`, `package-lock.json` and every other JSON file in the tree.
+Because the tracked list is curated, adding a site adds rows only for packages
+already being tracked — nothing else leaks in.
 - `source: "private"` marks packages on a private feed. By default their
   latest-version lookup is skipped (`n/a (private)`); see
   [Private feeds](#private-feeds) to enable it.
