@@ -1,0 +1,85 @@
+# Copy into the consumer repo as .github/dependabot.yml
+#
+# Dependabot is built into GitHub — no app to install, no third party. It is
+# the upgrade-PR half of this tool; the sheet is the reporting half, and the
+# two are designed to divide the work:
+#
+#   patch  -> automerged (see examples/dependabot-automerge.yml)
+#   minor  -> a PR, labelled, waiting for review
+#   major  -> NO PR. Dependabot has no way to hold one for approval, and
+#             letting majors open PRs unprompted is how a repo ends up with
+#             fifteen stale branches nobody wants to be the one to merge.
+#             Majors are ignored here and surface in the sheet as `major`
+#             drift instead, which is the deliberate-decision queue.
+#
+# That last point is the real difference from Renovate, which has a Dependency
+# Dashboard for exactly this. Here the Google Sheet plays that role.
+
+version: 2
+
+updates:
+  # ---------------------------------------------------------------- npm ----
+  - package-ecosystem: npm
+    # `directories` (plural) supports globs; `directory` (singular) does not.
+    # One entry per site in a multi-site repo, without listing them by hand.
+    directories:
+      - "/"
+      - "/apps/*/ClientApp"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Pacific/Auckland"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - npm
+    groups:
+      # One PR per ecosystem-ish cluster rather than per package: fewer PRs,
+      # and related packages that must move together do move together.
+      npm-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+    ignore:
+      # Majors are reported in the sheet, not opened as PRs. Remove this block
+      # if you would rather triage them as PRs.
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+
+  # -------------------------------------------------------------- NuGet ----
+  - package-ecosystem: nuget
+    directories:
+      - "/"
+      - "/src/*"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: "Pacific/Auckland"
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - nuget
+    groups:
+      nuget-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - version-update:semver-major
+
+  # ----------------------------------------------- GitHub Actions itself ----
+  # Cheap to keep current, and the thing that warns about runner deprecations.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    labels:
+      - dependencies
+      - github-actions

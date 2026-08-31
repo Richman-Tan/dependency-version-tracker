@@ -1,0 +1,54 @@
+# Copy into the consumer repo as .github/workflows/dependabot-automerge.yml
+#
+# Dependabot has no native automerge — GitHub's own docs point you at Actions
+# plus the CLI for this. Patch updates merge themselves; anything else is left
+# alone for a human.
+#
+# Prerequisites:
+#   - Enable "Allow auto-merge" in Settings -> General. Without it, `gh pr merge
+#     --auto` fails rather than merging.
+#   - Add a branch protection / ruleset requiring your CI checks on the default
+#     branch. Auto-merge then waits for them. WITHOUT protection a patch PR
+#     merges as soon as this workflow runs, tests or no tests — which is the
+#     one way this setup can genuinely bite you.
+#
+# Note the trigger: `pull_request`, NOT `pull_request_target`. The latter runs
+# in the context of the base repo with a writable token and is the standard way
+# people accidentally expose themselves to code from a PR branch. Since
+# September 2021 Dependabot-triggered workflows can be granted permissions
+# explicitly via `permissions:`, so `pull_request_target` is not needed here.
+
+name: Dependabot automerge
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  automerge:
+    # Nothing else can trip this: the actor check is on the bot identity, and
+    # Dependabot PRs always originate from the same repository.
+    if: github.actor == 'dependabot[bot]' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Read Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge for patch updates
+        if: steps.meta.outputs.update-type == 'version-update:semver-patch'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Label anything larger for review
+        if: steps.meta.outputs.update-type != 'version-update:semver-patch'
+        run: gh pr edit "$PR_URL" --add-label needs-review
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

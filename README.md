@@ -181,31 +181,58 @@ To resolve latest versions from Azure Artifacts (or any private feed), set repo
 Packaging → Read). Keep the NuGet URL on **V3** — V2 feeds silently return
 nothing for some APIs.
 
-## Renovate (automated upgrade PRs)
+## Dependabot (automated upgrade PRs)
 
-1. Install the [Mend Renovate GitHub App](https://github.com/apps/renovate)
-   and grant it the consumer repos.
-2. Renovate opens an onboarding PR; set its config to
-   (see [`examples/consumer-renovate.json`](examples/consumer-renovate.json)):
+Dependabot is built into GitHub — nothing to install, no third-party app with
+write access to your repos.
 
-   ```json
-   { "extends": ["github><org>/dependency-version-tracker#v1"] }
-   ```
+1. Copy [`examples/dependabot.yml`](examples/dependabot.yml) to
+   `.github/dependabot.yml`, adjusting `directories` to the repo's layout.
+   The `directories` key (plural) takes globs, so `"/apps/*/ClientApp"` covers
+   every site without listing them.
+2. Copy [`examples/dependabot-automerge.yml`](examples/dependabot-automerge.yml)
+   to `.github/workflows/`. Dependabot has no native automerge, so patch
+   updates are merged by a small workflow using the GitHub CLI — this is the
+   approach [GitHub's own docs](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/automating-dependabot-with-github-actions)
+   prescribe.
+3. Enable **Allow auto-merge** in Settings → General, and require your CI
+   checks on the default branch. Without required checks a patch PR merges the
+   moment the workflow runs, tests or no tests.
 
-3. The preset in [`default.json`](default.json) applies:
-   - **patch** → automerged (enable branch protection with required checks so
-     automerge waits for CI; without protection it merges directly),
-   - **minor** → PR labelled `renovate-minor`, awaiting review,
-   - **major** → listed on the Dependency Dashboard issue; a PR is only
-     created after you tick its checkbox (label `renovate-major`),
-   - `@sal/*` / `Sandfield.*` private packages **disabled** — enable per-repo
-     with `hostRules` and an [encrypted](https://docs.renovatebot.com/getting-started/private-packages/)
-     Azure Artifacts token.
+| Update | Behaviour |
+| --- | --- |
+| patch | automerged once required checks pass |
+| minor | PR opened, labelled `needs-review` |
+| major | **no PR** — reported in the sheet as `major` drift |
+
+### Why majors are reported rather than PR'd
+
+This is the one place Dependabot cannot express the intended policy.
+Renovate holds major upgrades on a Dependency Dashboard until someone ticks a
+box; Dependabot has no equivalent — majors either open PRs unprompted or are
+ignored. Unprompted major PRs are how a repo accumulates stale branches nobody
+wants to be the one to merge.
+
+So majors are ignored in `dependabot.yml` and surface in the sheet instead,
+where `major` sorts to the top. **The sheet is the dependency dashboard** —
+which is what it was for in the first place. Drop the `ignore` block if you
+would rather triage majors as PRs.
 
 Why not AI for any of this? Extraction, comparison, and upgrade PRs are
-deterministic; scripts + Renovate are cheaper, reproducible, and debuggable.
-A future nice-to-have: a bot that summarises release notes on `renovate-major`
-PRs.
+deterministic; scripts plus Dependabot are cheaper, reproducible, and
+debuggable. A future nice-to-have: a bot that summarises release notes on
+major-drift rows.
+
+### Renovate (alternative)
+
+[`default.json`](default.json) is a Renovate preset expressing the same policy,
+including the major-behind-approval rule that Dependabot cannot. It needs the
+[Mend Renovate app](https://github.com/apps/renovate) or self-hosting. Kept for
+teams that want the dashboard behaviour; see
+[`examples/consumer-renovate.json`](examples/consumer-renovate.json).
+
+**Do not run both.** They will open competing PRs for the same upgrades on
+separate branches, and Dependabot ignores the Renovate preset entirely.
 
 ## Local development
 
