@@ -13,7 +13,7 @@ const SCOPE = "https://www.googleapis.com/auth/spreadsheets";
  */
 export async function writeSheet({ serviceAccountKey, sheetId, sheetTab, rows, fetchImpl = fetch }) {
   const token = await getAccessToken(serviceAccountKey, fetchImpl);
-  const range = encodeURIComponent(`${sheetTab}!A:Z`);
+  const range = encodeURIComponent(`${quoteTab(sheetTab)}!A:Z`);
 
   const clearRes = await fetchImpl(`${SHEETS_BASE}/${sheetId}/values/${range}:clear`, {
     method: "POST",
@@ -21,7 +21,7 @@ export async function writeSheet({ serviceAccountKey, sheetId, sheetTab, rows, f
   });
   if (!clearRes.ok) throw new Error(`Sheets clear failed: ${clearRes.status} ${await clearRes.text()}`);
 
-  const startRange = encodeURIComponent(`${sheetTab}!A1`);
+  const startRange = encodeURIComponent(`${quoteTab(sheetTab)}!A1`);
   const updateRes = await fetchImpl(
     `${SHEETS_BASE}/${sheetId}/values/${startRange}?valueInputOption=RAW`,
     {
@@ -64,4 +64,13 @@ async function getAccessToken(serviceAccountKey, fetchImpl) {
 
 function base64url(input) {
   return Buffer.from(input).toString("base64url");
+}
+
+/**
+ * Quote a tab name for A1 notation. Unquoted names break as soon as they
+ * contain a space ("My Deps!A:Z" is a parse error), so always quote and double
+ * any embedded single quotes.
+ */
+export function quoteTab(sheetTab) {
+  return `'${String(sheetTab).replaceAll("'", "''")}'`;
 }

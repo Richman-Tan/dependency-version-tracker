@@ -53,3 +53,17 @@ test("missing package returns no result", () => {
   const { results } = extract(["not-a-real-package"]);
   assert.equal(results.length, 0);
 });
+
+test("a missing manifest warns and is skipped, rather than aborting the run", () => {
+  const { results, warnings, missing } = extractNpmVersions(fixtures, "client/package.json", ["react"]);
+  assert.deepEqual(results, []);
+  assert.equal(missing, true);
+  assert.match(warnings[0], /does not exist/);
+});
+
+test("a malformed manifest is still a hard error", () => {
+  assert.throws(
+    () => extractNpmVersions(fixtures, "Web.sample.csproj", ["react"]),
+    /Cannot parse npm manifest/
+  );
+});

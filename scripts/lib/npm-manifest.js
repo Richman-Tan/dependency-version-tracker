@@ -9,16 +9,23 @@ import { stripRangePrefix } from "./versions.js";
  * (e.g. a parked `dependencies-disabled`) and `overrides` are ignored. If a
  * package appears in both, `dependencies` wins and a warning is emitted.
  *
- * Returns { results, warnings } where each result is
+ * Returns { results, warnings, missing } where each result is
  * { name, manifestPath, rawRange, currentVersion } — currentVersion is null
  * when the range can't be reduced to a base version (drift "range").
+ *
+ * A manifest that does not exist sets `missing` and warns: one mistyped path in
+ * the config should cost those rows, not the whole report. Malformed JSON is
+ * still a hard error — that is a broken repo, not a broken config.
  */
 export function extractNpmVersions(repoRoot, manifestPath, trackedNames) {
-  const abs = path.join(repoRoot, manifestPath);
+  const abs = path.resolve(repoRoot, manifestPath);
   let manifest;
   try {
     manifest = JSON.parse(readFileSync(abs, "utf8"));
   } catch (err) {
+    if (err.code === "ENOENT" || err.code === "ENOTDIR" || err.code === "EISDIR") {
+      return { results: [], warnings: [`Manifest "${manifestPath}" does not exist; skipped.`], missing: true };
+    }
     throw new Error(`Cannot parse npm manifest "${manifestPath}": ${err.message}`);
   }
   const deps = manifest.dependencies ?? {};
@@ -43,7 +50,7 @@ export function extractNpmVersions(repoRoot, manifestPath, trackedNames) {
       currentVersion: resolveRange(rawRange, deps, devDeps),
     });
   }
-  return { results, warnings };
+  return { results, warnings, missing: false };
 }
 
 function resolveRange(rawRange, deps, devDeps) {
