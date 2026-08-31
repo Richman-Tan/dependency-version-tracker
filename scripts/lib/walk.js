@@ -12,7 +12,9 @@ const SKIP_DIRS = new Set(["node_modules", "bin", "obj", "dist", ".git", ".vs"])
 export function resolveManifests(repoRoot, pattern) {
   const normalized = pattern.replaceAll("\\", "/");
   if (!normalized.includes("*")) {
-    return [normalized];
+    // Normalise so "app/x.json" and "./app/x.json" are one manifest, not two
+    // identical rows. Kept relative; ".." is preserved and handled upstream.
+    return [normalized.replace(/^\.\/+/, "").replace(/\/{2,}/g, "/")];
   }
   const match = /^([^*]*?)\*\*\/(\*(\.[A-Za-z0-9.]+))$/.exec(normalized);
   if (!match) {

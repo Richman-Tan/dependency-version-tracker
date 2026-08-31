@@ -35,3 +35,8 @@ test("unsupported glob shapes are rejected loudly", () => {
 test("missing directories yield zero manifests", () => {
   assert.deepEqual(resolveManifests(fixtures, "no-such-dir/**/*.csproj"), []);
 });
+
+test("equivalent spellings of one path normalise to a single manifest", () => {
+  assert.deepEqual(resolveManifests(fixtures, "./package.sample.json"), ["package.sample.json"]);
+  assert.deepEqual(resolveManifests(fixtures, "src//app/x.csproj"), ["src/app/x.csproj"]);
+});

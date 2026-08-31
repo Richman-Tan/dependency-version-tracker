@@ -17,19 +17,22 @@
  */
 import { appendFileSync } from "node:fs";
 import { loadConfig } from "./lib/config.js";
+import { createMsbuildContext } from "./lib/msbuild.js";
 import { extractNpmVersions } from "./lib/npm-manifest.js";
 import { extractNugetVersions } from "./lib/nuget-manifest.js";
 import { lookupNpmLatest } from "./lib/registry-npm.js";
 import { lookupNugetLatest } from "./lib/registry-nuget.js";
-import { classifyDrift } from "./lib/versions.js";
+import {
+  buildRow,
+  compareRows,
+  dedupeEntries,
+  HEADER,
+  lookupKey,
+  notFoundEntry,
+} from "./lib/rows.js";
 import { writeSheet } from "./lib/sheets.js";
 import { resolveManifests } from "./lib/walk.js";
 
-const DRIFT_ORDER = [
-  "major", "minor", "patch", "floating", "range", "not-found",
-  "lookup-failed", "unknown", "private", "up-to-date",
-];
-const HEADER = ["Ecosystem", "Package", "Manifest", "Current", "Latest", "Drift", "Checked (UTC)"];
 const LOOKUP_CONCURRENCY = 8;
 
 main().catch((err) => {
@@ -106,61 +109,74 @@ function parseArgs(argv) {
 
 /** Flatten config into one entry per (package, manifest) occurrence. */
 function extractAll(config, repoRoot, warnings) {
-  const entries = [];
+  const msbuild = createMsbuildContext(repoRoot);
+  const entries = [
+    ...extractEcosystem("npm", config.npm, repoRoot, warnings, (manifestPath, names) =>
+      extractNpmVersions(repoRoot, manifestPath, names)
+    ),
+    ...extractEcosystem("nuget", config.nuget, repoRoot, warnings, (manifestPath, names) =>
+      extractNugetVersions(repoRoot, manifestPath, names, msbuild)
+    ),
+  ];
+  warnings.push(...msbuild.warnings);
+  return dedupeEntries(entries);
+}
 
-  for (const pkg of config.npm) {
-    const found = [];
+/**
+ * Extract one ecosystem, parsing each manifest exactly once for the union of
+ * the names that target it — a repo with 50 projects and 20 tracked packages
+ * would otherwise re-parse every csproj 20 times.
+ */
+function extractEcosystem(ecosystem, packages, repoRoot, warnings, extract) {
+  const manifestsPerPackage = new Map();
+  const namesPerManifest = new Map();
+  for (const pkg of packages) {
+    const resolved = new Set();
     for (const pattern of pkg.manifests) {
-      for (const manifestPath of resolveManifests(repoRoot, pattern)) {
-        const { results, warnings: w } = extractNpmVersions(repoRoot, manifestPath, [pkg.name]);
-        warnings.push(...w);
-        found.push(...results.map((r) => ({ ...r, ecosystem: "npm", source: pkg.source })));
-      }
+      for (const manifestPath of resolveManifests(repoRoot, pattern)) resolved.add(manifestPath);
     }
-    entries.push(...(found.length > 0 ? found : [notFound("npm", pkg)]));
+    manifestsPerPackage.set(pkg, resolved);
+    for (const manifestPath of resolved) {
+      if (!namesPerManifest.has(manifestPath)) namesPerManifest.set(manifestPath, new Set());
+      namesPerManifest.get(manifestPath).add(pkg.name);
+    }
   }
 
-  for (const pkg of config.nuget) {
-    const found = [];
-    for (const pattern of pkg.manifests) {
-      for (const manifestPath of resolveManifests(repoRoot, pattern)) {
-        const results = extractNugetVersions(repoRoot, manifestPath, [pkg.name]);
-        found.push(...results.map((r) => ({ ...r, ecosystem: "nuget", source: pkg.source })));
-      }
+  const resultsPerManifest = new Map();
+  for (const [manifestPath, names] of namesPerManifest) {
+    const { results, warnings: extractWarnings } = extract(manifestPath, [...names]);
+    warnings.push(...extractWarnings);
+    const byName = new Map();
+    for (const result of results) {
+      if (!byName.has(result.name)) byName.set(result.name, []);
+      byName.get(result.name).push(result);
     }
-    entries.push(...(found.length > 0 ? found : [notFound("nuget", pkg)]));
+    resultsPerManifest.set(manifestPath, byName);
+  }
+
+  const entries = [];
+  for (const pkg of packages) {
+    const found = [];
+    for (const manifestPath of manifestsPerPackage.get(pkg)) {
+      const results = resultsPerManifest.get(manifestPath)?.get(pkg.name) ?? [];
+      found.push(...results.map((r) => ({ ...r, ecosystem, source: pkg.source })));
+    }
+    entries.push(...(found.length > 0 ? found : [notFoundEntry(ecosystem, pkg)]));
   }
   return entries;
 }
 
-function notFound(ecosystem, pkg) {
-  return {
-    ecosystem,
-    source: pkg.source,
-    name: pkg.name,
-    manifestPath: "—",
-    rawRange: "—",
-    rawVersion: "—",
-    currentVersion: null,
-    notFound: true,
-  };
-}
 
 /** One latest-version lookup per distinct (ecosystem, name), capped concurrency. */
 async function lookupLatestVersions(config, warnings) {
   const tasks = [];
   const seen = new Set();
-  for (const pkg of config.npm) {
-    if (!seen.has(`npm:${pkg.name}`)) {
-      seen.add(`npm:${pkg.name}`);
-      tasks.push({ key: `npm:${pkg.name}`, run: () => npmLookup(pkg) });
-    }
-  }
-  for (const pkg of config.nuget) {
-    const key = `nuget:${pkg.name.toLowerCase()}`;
-    if (!seen.has(key)) {
+  for (const [ecosystem, lookup] of [["npm", npmLookup], ["nuget", nugetLookup]]) {
+    for (const pkg of config[ecosystem]) {
+      const key = lookupKey(ecosystem, pkg.name);
+      if (seen.has(key)) continue;
       seen.add(key);
-      tasks.push({ key, run: () => nugetLookup(pkg) });
+      tasks.push({ key, run: () => lookup(pkg) });
     }
   }
 
@@ -195,40 +211,6 @@ function nugetLookup(pkg) {
     return lookupNugetLatest(pkg.name, { serviceIndexUrl, token: process.env.PRIVATE_NUGET_TOKEN });
   }
   return lookupNugetLatest(pkg.name);
-}
-
-function buildRow(entry, latestByKey, checkedAt) {
-  const key = entry.ecosystem === "npm" ? `npm:${entry.name}` : `nuget:${entry.name.toLowerCase()}`;
-  const lookup = latestByKey.get(key) ?? { error: "no lookup performed" };
-  const current = entry.ecosystem === "npm" ? entry.rawRange : entry.rawVersion;
-
-  let latest = "n/a";
-  let drift;
-  if (entry.notFound) {
-    drift = "not-found";
-  } else if (lookup.private) {
-    latest = "n/a (private)";
-    drift = "private";
-  } else if (lookup.error) {
-    drift = "lookup-failed";
-  } else {
-    latest = lookup.latest;
-    if (entry.floating) {
-      drift = "floating";
-    } else if (entry.currentVersion === null) {
-      drift = "range";
-    } else {
-      drift = classifyDrift(entry.currentVersion, lookup.latest.replace(" (prerelease)", ""));
-    }
-  }
-  return [entry.ecosystem, entry.name, entry.manifestPath, current, latest, drift, checkedAt];
-}
-
-function compareRows(a, b) {
-  const severity = DRIFT_ORDER.indexOf(a[5]) - DRIFT_ORDER.indexOf(b[5]);
-  if (severity !== 0) return severity;
-  if (a[0] !== b[0]) return a[0] < b[0] ? -1 : 1;
-  return a[1].toLowerCase() < b[1].toLowerCase() ? -1 : 1;
 }
 
 function emitWarning(message) {

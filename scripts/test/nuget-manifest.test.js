@@ -9,7 +9,7 @@ const WEB = "Web.sample.csproj";
 const CORE = "Core.sample.csproj";
 
 function extract(names, manifest = WEB) {
-  return extractNugetVersions(fixtures, manifest, names);
+  return extractNugetVersions(fixtures, manifest, names).results;
 }
 
 test("reads Version attribute", () => {
