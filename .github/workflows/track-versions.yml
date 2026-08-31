@@ -50,6 +50,9 @@ on:
         description: PAT for the private NuGet feed (enables private lookups)
         required: false
 
+permissions:
+  contents: read
+
 jobs:
   track:
     runs-on: ubuntu-latest
@@ -81,6 +84,10 @@ jobs:
         working-directory: .dep-tracker/scripts
         run: npm ci --no-audit --no-fund
 
+      # Caller-supplied strings go through env, never straight into the run
+      # block: `${{ inputs.x }}` inside a shell command is the standard Actions
+      # script-injection hole, and a consumer can wire a workflow_dispatch
+      # string input directly to these.
       - name: Extract versions and sync sheet
         env:
           GOOGLE_SERVICE_ACCOUNT_KEY: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_KEY }}
@@ -88,11 +95,18 @@ jobs:
           PRIVATE_NPM_TOKEN: ${{ secrets.PRIVATE_NPM_TOKEN }}
           PRIVATE_NUGET_INDEX_URL: ${{ vars.PRIVATE_NUGET_INDEX_URL }}
           PRIVATE_NUGET_TOKEN: ${{ secrets.PRIVATE_NUGET_TOKEN }}
-        run: >
-          node .dep-tracker/scripts/track-versions.js
-          --config "${{ inputs.config-path }}"
-          --repo-root .
-          --sheet-id "${{ inputs.sheet-id }}"
-          --sheet-tab "${{ inputs.sheet-tab }}"
-          --summary-file "$GITHUB_STEP_SUMMARY"
-          ${{ inputs.dry-run && '--dry-run' || '' }}
+          CONFIG_PATH: ${{ inputs.config-path }}
+          SHEET_ID: ${{ inputs.sheet-id }}
+          SHEET_TAB: ${{ inputs.sheet-tab }}
+          # Empty, not "false": ${DRY_RUN:+..} tests for non-empty, and the
+          # boolean input would otherwise render the string "false" and enable
+          # the flag on every run.
+          DRY_RUN: ${{ inputs.dry-run && '1' || '' }}
+        run: |
+          node .dep-tracker/scripts/track-versions.js \
+            --config "$CONFIG_PATH" \
+            --repo-root . \
+            --sheet-id "$SHEET_ID" \
+            --sheet-tab "$SHEET_TAB" \
+            --summary-file "$GITHUB_STEP_SUMMARY" \
+            ${DRY_RUN:+--dry-run}

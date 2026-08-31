@@ -10,6 +10,7 @@ approval).
 Ecosystem  Package             Manifest                          Current   Latest   Drift
 nuget      GitVersion.MsBuild  src/App.Core/App.Core.csproj      6.7.0     6.8.2    minor
 nuget      GitVersion.MsBuild  src/App.Web/App.Web.csproj        6.5.1     6.8.2    minor
+nuget      Serilog.AspNetCore  Directory.Packages.props          8.0.1     10.0.0   major
 npm        react               src/App.Web/ClientApp/package.json ^19.2.0  19.2.8   patch
 npm        @sal/portal         src/App.Web/ClientApp/package.json ^7.4.2   n/a (private)  private
 ```
@@ -22,7 +23,8 @@ npm        @sal/portal         src/App.Web/ClientApp/package.json ^7.4.2   n/a (
   repo, checks out this repo's scripts (at the same ref the caller pinned),
   and runs `scripts/track-versions.js`.
 - The script parses manifests statically (real XML parsing — commented-out
-  `<PackageReference>` lines are never reported), queries
+  `<PackageReference>` lines are never reported), resolves centrally managed
+  versions and `$(Property)` references the way MSBuild would, queries
   registry.npmjs.org / api.nuget.org, and rewrites one sheet tab. The same
   table is written to the job's step summary.
 - No `googleapis`, no `semver` — one dependency (`fast-xml-parser`), Google
@@ -74,6 +76,50 @@ npm        @sal/portal         src/App.Web/ClientApp/package.json ^7.4.2   n/a (
 - NuGet names match case-insensitively. One sheet row per (package, csproj)
   pair, so version drift across projects is visible.
 
+## Central Package Management and MSBuild properties
+
+Where a NuGet version actually lives varies, so the version on a
+`<PackageReference>` is resolved the way MSBuild would:
+
+1. `VersionOverride` on the reference,
+2. its `Version` attribute or `<Version>` child,
+3. `<PackageVersion>` in the nearest `Directory.Packages.props`.
+
+`$(SomeVersion)` references are then expanded against the `<PropertyGroup>`s in
+the csproj itself, `Directory.Build.props`, and `Directory.Packages.props` — the
+csproj wins, and names are matched case-insensitively. Only the *nearest*
+`Directory.*.props` walking up from the project (stopping at the repo root) is
+read, matching the SDK's default import. One that exists but fails to parse ends
+the walk with a warning: it is the file that governs this project, so falling
+through to its parent would report a version the project doesn't use.
+
+Under Central Package Management the version has one home, so the row is
+attributed to `Directory.Packages.props` and the twenty projects that share it
+collapse into a single row. A reference whose version genuinely can't be pinned
+down reports `unresolved` rather than a misleading version.
+
+`Condition` attributes are ignored — this is a static read, not an MSBuild
+evaluation — so declarations that a real build would treat as mutually exclusive
+are all considered. Where that leaves genuine ambiguity the tool reports it
+rather than guessing:
+
+- A package `Include`d twice with **different** versions gets a row each, so the
+  disagreement is visible. Identical duplicates collapse.
+- Duplicate `<PackageVersion>` entries for one package likewise get a row each
+  (NuGet itself rejects this with NU1506).
+- Everything else follows MSBuild item semantics in document order: `Update`
+  modifies an item declared earlier by `Include`, so an `Update` *before* any
+  `Include` matches nothing and is ignored; a metadata-only `Update` (the common
+  `PrivateAssets` form) leaves the version alone; an `Update` carrying a version
+  replaces what the `Include`s declared; and with no `Include` at all the last
+  `Update` with a version wins. Repeated `<Version>` child elements are metadata,
+  so the last one wins.
+
+Because MSBuild imports `Directory.Packages.props` *before* the project body, a
+`$(Property)` inside a `<PackageVersion>` is expanded without the csproj's own
+properties in scope — resolving it against them would produce a version no build
+would ever generate.
+
 ## Workflow inputs and secrets
 
 | Input | Default | Purpose |
@@ -98,10 +144,16 @@ npm        @sal/portal         src/App.Web/ClientApp/package.json ^7.4.2   n/a (
 | `major` / `minor` / `patch` | Latest differs in that part (4th-part NuGet revisions count as `patch`) |
 | `up-to-date` | Current ≥ latest |
 | `floating` | NuGet wildcard like `7.*` — static parse can't resolve it; latest is still shown |
-| `range` | npm range too complex to reduce (`*`, `>=1 <2`) — shown verbatim |
+| `range` | Range too complex to reduce — npm `*` / `>=1 <2`, or NuGet interval `[1.0,2.0)` — shown verbatim |
+| `unresolved` | NuGet reference with no version anywhere, or a `$(Property)` that doesn't resolve |
 | `private` | Private-source package, lookup skipped |
 | `not-found` | Tracked name absent from every manifest (typo in the config?) |
 | `lookup-failed` | Registry error/timeout — run still succeeds, warning emitted |
+| `unknown` | Current version present but unparseable (e.g. `latest`) — never silently treated as up-to-date |
+
+Rows are sorted worst-first in that order, so the top of the sheet is the work
+queue. A manifest path that doesn't exist warns and drops those rows rather
+than failing the run; malformed JSON/XML in a manifest is still a hard error.
 
 ## Private feeds
 
@@ -120,7 +172,7 @@ nothing for some APIs.
    (see [`examples/consumer-renovate.json`](examples/consumer-renovate.json)):
 
    ```json
-   { "extends": ["github><org>/dependency-version-tracker"] }
+   { "extends": ["github><org>/dependency-version-tracker#v1"] }
    ```
 
 3. The preset in [`default.json`](default.json) applies:

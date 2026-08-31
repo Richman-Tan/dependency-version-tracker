@@ -12,6 +12,11 @@ on:
         type: boolean
         default: false
 
+# The reusable workflow only ever reads the repo. Declaring that here too keeps
+# the job at least-privilege even in orgs whose default token is read-write.
+permissions:
+  contents: read
+
 jobs:
   report:
     uses: <org>/dependency-version-tracker/.github/workflows/track-versions.yml@v1

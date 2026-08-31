@@ -1,0 +1,5 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": "This repo eats its own preset, which also keeps the pinned GitHub Actions current.",
+  "extends": ["local>Richman-Tan/dependency-version-tracker"]
+}
