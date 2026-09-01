@@ -190,6 +190,14 @@ write access to your repos.
    `.github/dependabot.yml`, adjusting `directories` to the repo's layout.
    The `directories` key (plural) takes globs, so `"/apps/*/ClientApp"` covers
    every site without listing them.
+
+   **If the repo already has a `.github/dependabot.yml`, merge into it — do
+   not overwrite.** A repo can only have one, and an existing file usually
+   carries private-feed `registries`, pattern-based `groups`, and PR limits
+   that took someone real effort. Take three things from the example: the
+   `ignore` block for majors (the policy), `directories` globs if the repo has
+   several sites, and an `npm` entry if only `nuget` is configured. Leave
+   everything else alone.
 2. Copy [`examples/dependabot-automerge.yml`](examples/dependabot-automerge.yml)
    to `.github/workflows/`. Dependabot has no native automerge, so patch
    updates are merged by a small workflow using the GitHub CLI — this is the
