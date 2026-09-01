@@ -242,6 +242,11 @@ teams that want the dashboard behaviour; see
 **Do not run both.** They will open competing PRs for the same upgrades on
 separate branches, and Dependabot ignores the Renovate preset entirely.
 
+## Rolling this out
+
+See [ROLLOUT.md](ROLLOUT.md) — what is proven, the decisions behind it, and a
+step-by-step for putting it on a repo.
+
 ## Local development
 
 ```bash

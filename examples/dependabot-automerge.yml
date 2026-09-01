@@ -48,7 +48,20 @@ jobs:
 
       - name: Label anything larger for review
         if: steps.meta.outputs.update-type != 'version-update:semver-patch'
-        run: gh pr edit "$PR_URL" --add-label needs-review
+        # Two traps here, both of which fail the whole run:
+        #   - `gh pr edit --add-label` will not create a missing label, it just
+        #     errors. `gh label create --force` is idempotent, so it is safe on
+        #     a fresh repo and on the hundredth run.
+        #   - This job has no checkout (it does not need the code), so gh has
+        #     no git remote to infer the repo from. `gh pr edit` gets it from
+        #     the PR URL, but `gh label create` needs --repo spelled out.
+        run: |
+          gh label create needs-review \
+            --repo "$GITHUB_REPOSITORY" \
+            --color FBCA04 \
+            --description "Dependency update awaiting human review" \
+            --force
+          gh pr edit "$PR_URL" --add-label needs-review
         env:
           PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
