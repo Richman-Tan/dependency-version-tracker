@@ -35,13 +35,19 @@ updates:
       - dependencies
       - npm
     groups:
-      # One PR per ecosystem-ish cluster rather than per package: fewer PRs,
-      # and related packages that must move together do move together.
-      npm-minor-and-patch:
+      # Grouping keeps the PR count down. Patch and minor MUST be separate
+      # groups, though: dependabot/fetch-metadata reports the HIGHEST
+      # update-type in a grouped PR, so bundling a patch with a minor makes the
+      # whole PR read as `minor` and the automerge condition never matches.
+      # The result is a workflow that looks correct and silently does nothing.
+      npm-patch:
+        applies-to: version-updates
+        update-types:
+          - patch
+      npm-minor:
         applies-to: version-updates
         update-types:
           - minor
-          - patch
     ignore:
       # Majors are reported in the sheet, not opened as PRs. Remove this block
       # if you would rather triage them as PRs.
@@ -64,11 +70,15 @@ updates:
       - dependencies
       - nuget
     groups:
-      nuget-minor-and-patch:
+      # Separate patch from minor — see the note on the npm groups above.
+      nuget-patch:
+        applies-to: version-updates
+        update-types:
+          - patch
+      nuget-minor:
         applies-to: version-updates
         update-types:
           - minor
-          - patch
     ignore:
       - dependency-name: "*"
         update-types:
