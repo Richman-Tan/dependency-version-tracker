@@ -2,9 +2,11 @@
 
 A reusable GitHub Actions workflow that reads a **curated list** of npm and NuGet
 packages from a repo, compares each against the latest published version, and
-overwrites a live table in a **Google Sheet** — plus a shareable **Renovate
-preset** for automated upgrade PRs (automerge patch, PR minor, major behind
-approval).
+overwrites a live table in a **Google Sheet** — plus **Dependabot** config for
+automated upgrade PRs (automerge patch, review minor, report major).
+
+New here? [ROLLOUT.md](ROLLOUT.md) has the status, the decisions behind it, and
+a step-by-step for putting this on a repo.
 
 ```
 Ecosystem  Package             Manifest                          Current   Latest   Drift
