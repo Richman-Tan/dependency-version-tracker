@@ -1,7 +1,7 @@
 # Dependency version tracker — status and rollout
 
 **Status:** working and verified end to end. Not yet applied to a Sandfield repo.
-**Version:** `v1` → `88fef9f` · CI green · 118 unit tests
+**Version:** consumers pin `v1`, which moves forward with each release · 118 unit tests
 **Repo:** https://github.com/Richman-Tan/dependency-version-tracker
 
 This document covers both what was built and how to put it on a repo. Read
