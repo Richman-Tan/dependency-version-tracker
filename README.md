@@ -30,31 +30,69 @@ npm        @sal/portal         src/App.Web/ClientApp/package.json ^7.4.2   n/a (
   auth via a self-signed service-account JWT, and a version comparator that
   accepts NuGet 4-part versions (`4.0.8.8`).
 
-## Quick start
+## Putting it on a repo
 
-Steps 1–3 need no credentials and change nothing.
+Do these in order. Steps 1–3 need no credentials and write nothing.
 
-1. **Config.** Commit a `tracked-packages.json` at the repo root naming only
-   the packages you care about. Pick the closest starting point from
-   [`examples/`](examples/README.md); `tracked-packages.minimal.json` is the
-   smallest valid one.
-2. **Workflow.** Copy [`examples/caller-workflow.yml`](examples/caller-workflow.yml)
-   to `.github/workflows/dependency-report.yml`, filling in `<org>` and the
-   sheet ID (the ID can stay a placeholder until step 4).
-3. **Dry run.** Run it from the Actions tab with **dry-run: true**. It writes
-   nothing and prints the table to the job summary. **Check the `Manifest`
-   column before going further** — it shows which files the globs actually
-   matched, and wrong paths are the most likely failure.
-4. **Google (once per org).** Create a GCP project, enable the **Google Sheets
-   API**, create a **service account** (no roles needed) and a **JSON key**.
-5. **Sheet.** Create the spreadsheet, note the ID from its URL, add a tab named
-   `Dependencies` (or your own name), and **share the sheet with the service
-   account's `client_email` as Editor**. Skipping the share produces a
-   confusing 403 rather than a clear error.
-6. **Go live.** Add the repo secret `GOOGLE_SERVICE_ACCOUNT_KEY` (paste the
-   entire JSON key), put the real sheet ID in the workflow, and run with
-   dry-run off. The tab is cleared and rewritten each run, so stale rows never
-   linger; other tabs in the spreadsheet are untouched.
+### 1. Add the config
+
+- Copy [`examples/tracked-packages.minimal.json`](examples/tracked-packages.minimal.json)
+  into the consumer repo root as `tracked-packages.json`. The other configs in
+  [`examples/`](examples/README.md) cover single-site, multi-site and Central
+  Package Management layouts.
+- Edit the package names to ones the repo actually uses, and set the manifest
+  paths to match its layout (see the [schema](#tracked-packagesjson-schema)).
+
+### 2. Add the workflow
+
+- Copy [`examples/caller-workflow.yml`](examples/caller-workflow.yml) into the
+  consumer repo as `.github/workflows/dependency-report.yml`.
+- Replace `<org>` with the GitHub org/user hosting this repo. Leave the sheet
+  ID placeholder for now.
+- Commit both files and push to the default branch. The workflow only appears
+  in the Actions tab once it is on the default branch.
+
+### 3. Dry run
+
+- Actions tab → **Dependency version report** → **Run workflow** → tick
+  **dry-run** → run.
+- Open the job summary. You should see the table. **Check the `Manifest`
+  column first**: it lists the files the globs matched. A package showing
+  `not-found` means the name or the manifest path is wrong.
+- Fix the config and re-run until the table looks right.
+
+### 4. Google setup (once per org)
+
+- In Google Cloud, create a project and enable the **Google Sheets API**.
+- Create a **service account** with no roles, then create a **JSON key** and
+  download it.
+
+### 5. Create the sheet
+
+- Create a spreadsheet and add a tab named `Dependencies` (or your own name,
+  passed as `sheet-tab`).
+- **Share the sheet with the service account's `client_email` as Editor.**
+  Skipping this produces a 403 later rather than a clear error.
+- Copy the spreadsheet ID from the URL — the long string between `/d/` and
+  `/edit`.
+
+### 6. Go live
+
+- In the consumer repo, add a secret named `GOOGLE_SERVICE_ACCOUNT_KEY`
+  containing the entire JSON key file.
+- Put the spreadsheet ID into `dependency-report.yml` and push.
+- Run the workflow again with dry-run off. The tab should now hold the table
+  with a `Last run` footer.
+
+### 7. Leave it running
+
+The workflow runs on the cron in the caller file (weekdays, ~06:00 NZ time by
+default). Each run clears and rewrites the tab, so stale rows never linger;
+other tabs in the spreadsheet are untouched.
+
+Packages on a private feed should be marked `"source": "private"` in the
+config. They show as `private` drift until the variables and tokens in
+[Private feeds](#private-feeds) are added.
 
 ## `tracked-packages.json` schema
 
