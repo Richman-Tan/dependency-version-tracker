@@ -2,11 +2,8 @@
 
 A reusable GitHub Actions workflow that reads a **curated list** of npm and NuGet
 packages from a repo, compares each against the latest published version, and
-overwrites a live table in a **Google Sheet** — plus **Dependabot** config for
-automated upgrade PRs (automerge patch, review minor, report major).
-
-New here? [ROLLOUT.md](ROLLOUT.md) has the status, the decisions behind it, and
-a step-by-step for putting this on a repo.
+overwrites a live table in a **Google Sheet**. The sheet is sorted worst-first,
+so the top of it is the work queue.
 
 ```
 Ecosystem  Package             Manifest                          Current   Latest   Drift
@@ -33,23 +30,31 @@ npm        @sal/portal         src/App.Web/ClientApp/package.json ^7.4.2   n/a (
   auth via a self-signed service-account JWT, and a version comparator that
   accepts NuGet 4-part versions (`4.0.8.8`).
 
-## Consumer quick start
+## Quick start
 
-1. **Google (once per org)**
-   - Create a GCP project → enable the **Google Sheets API**.
-   - Create a **service account** (no roles needed) → create a **JSON key**.
-   - Create the spreadsheet, note the ID from its URL, add a tab named
-     `Dependencies` (or your own name), and **share the sheet with the service
-     account's `client_email` as Editor**.
-2. **Per consumer repo**
-   - Add the secret `GOOGLE_SERVICE_ACCOUNT_KEY` (paste the entire JSON key).
-   - Commit `tracked-packages.json` at the repo root
-     (see [`examples/tracked-packages.json`](examples/tracked-packages.json)).
-   - Commit [`examples/caller-workflow.yml`](examples/caller-workflow.yml) as
-     `.github/workflows/dependency-report.yml`, filling in `<org>` and the
-     sheet ID.
-   - Run it once from the Actions tab with **dry-run: true**, check the step
-     summary, then run live.
+Steps 1–3 need no credentials and change nothing.
+
+1. **Config.** Commit a `tracked-packages.json` at the repo root naming only
+   the packages you care about. Pick the closest starting point from
+   [`examples/`](examples/README.md); `tracked-packages.minimal.json` is the
+   smallest valid one.
+2. **Workflow.** Copy [`examples/caller-workflow.yml`](examples/caller-workflow.yml)
+   to `.github/workflows/dependency-report.yml`, filling in `<org>` and the
+   sheet ID (the ID can stay a placeholder until step 4).
+3. **Dry run.** Run it from the Actions tab with **dry-run: true**. It writes
+   nothing and prints the table to the job summary. **Check the `Manifest`
+   column before going further** — it shows which files the globs actually
+   matched, and wrong paths are the most likely failure.
+4. **Google (once per org).** Create a GCP project, enable the **Google Sheets
+   API**, create a **service account** (no roles needed) and a **JSON key**.
+5. **Sheet.** Create the spreadsheet, note the ID from its URL, add a tab named
+   `Dependencies` (or your own name), and **share the sheet with the service
+   account's `client_email` as Editor**. Skipping the share produces a
+   confusing 403 rather than a clear error.
+6. **Go live.** Add the repo secret `GOOGLE_SERVICE_ACCOUNT_KEY` (paste the
+   entire JSON key), put the real sheet ID in the workflow, and run with
+   dry-run off. The tab is cleared and rewritten each run, so stale rows never
+   linger; other tabs in the spreadsheet are untouched.
 
 ## `tracked-packages.json` schema
 
@@ -72,12 +77,15 @@ npm        @sal/portal         src/App.Web/ClientApp/package.json ^7.4.2   n/a (
 - `manifests` (optional, per package) overrides the ecosystem default. Plain
   paths, `<prefix>/**/*.<ext>` globs, or `<prefix>/**/<filename>` globs;
   `node_modules`, `bin`, `obj`, `dist` are never walked.
-
 - `source: "private"` marks packages on a private feed. By default their
   latest-version lookup is skipped (`n/a (private)`); see
   [Private feeds](#private-feeds) to enable it.
 - NuGet names match case-insensitively. One sheet row per (package, csproj)
   pair, so version drift across projects is visible.
+- Unknown keys are rejected, and every problem in the file is reported at once.
+
+Worked configs for a single-site repo, a multi-site repo and a Central Package
+Management repo are in [`examples/`](examples/README.md).
 
 ### Repos with several sites
 
@@ -174,6 +182,10 @@ Rows are sorted worst-first in that order, so the top of the sheet is the work
 queue. A manifest path that doesn't exist warns and drops those rows rather
 than failing the run; malformed JSON/XML in a manifest is still a hard error.
 
+Two things that look like bugs but are not: a row attributed to
+`Directory.Packages.props` is Central Package Management collapsing correctly,
+and the same package appearing twice means two projects genuinely disagree.
+
 ## Private feeds
 
 To resolve latest versions from Azure Artifacts (or any private feed), set repo
@@ -183,71 +195,17 @@ To resolve latest versions from Azure Artifacts (or any private feed), set repo
 Packaging → Read). Keep the NuGet URL on **V3** — V2 feeds silently return
 nothing for some APIs.
 
-## Dependabot (automated upgrade PRs)
+## Caveats
 
-Dependabot is built into GitHub — nothing to install, no third-party app with
-write access to your repos.
-
-1. Copy [`examples/dependabot.yml`](examples/dependabot.yml) to
-   `.github/dependabot.yml`, adjusting `directories` to the repo's layout.
-   The `directories` key (plural) takes globs, so `"/apps/*/ClientApp"` covers
-   every site without listing them.
-
-   **If the repo already has a `.github/dependabot.yml`, merge into it — do
-   not overwrite.** A repo can only have one, and an existing file usually
-   carries private-feed `registries`, pattern-based `groups`, and PR limits
-   that took someone real effort. Take three things from the example: the
-   `ignore` block for majors (the policy), `directories` globs if the repo has
-   several sites, and an `npm` entry if only `nuget` is configured. Leave
-   everything else alone.
-2. Copy [`examples/dependabot-automerge.yml`](examples/dependabot-automerge.yml)
-   to `.github/workflows/`. Dependabot has no native automerge, so patch
-   updates are merged by a small workflow using the GitHub CLI — this is the
-   approach [GitHub's own docs](https://docs.github.com/en/code-security/dependabot/working-with-dependabot/automating-dependabot-with-github-actions)
-   prescribe.
-3. Enable **Allow auto-merge** in Settings → General, and require your CI
-   checks on the default branch. Without required checks a patch PR merges the
-   moment the workflow runs, tests or no tests.
-
-| Update | Behaviour |
-| --- | --- |
-| patch | automerged once required checks pass |
-| minor | PR opened, labelled `needs-review` |
-| major | **no PR** — reported in the sheet as `major` drift |
-
-### Why majors are reported rather than PR'd
-
-This is the one place Dependabot cannot express the intended policy.
-Renovate holds major upgrades on a Dependency Dashboard until someone ticks a
-box; Dependabot has no equivalent — majors either open PRs unprompted or are
-ignored. Unprompted major PRs are how a repo accumulates stale branches nobody
-wants to be the one to merge.
-
-So majors are ignored in `dependabot.yml` and surface in the sheet instead,
-where `major` sorts to the top. **The sheet is the dependency dashboard** —
-which is what it was for in the first place. Drop the `ignore` block if you
-would rather triage majors as PRs.
-
-Why not AI for any of this? Extraction, comparison, and upgrade PRs are
-deterministic; scripts plus Dependabot are cheaper, reproducible, and
-debuggable. A future nice-to-have: a bot that summarises release notes on
-major-drift rows.
-
-### Renovate (alternative)
-
-[`default.json`](default.json) is a Renovate preset expressing the same policy,
-including the major-behind-approval rule that Dependabot cannot. It needs the
-[Mend Renovate app](https://github.com/apps/renovate) or self-hosting. Kept for
-teams that want the dashboard behaviour; see
-[`examples/consumer-renovate.json`](examples/consumer-renovate.json).
-
-**Do not run both.** They will open competing PRs for the same upgrades on
-separate branches, and Dependabot ignores the Renovate preset entirely.
-
-## Rolling this out
-
-See [ROLLOUT.md](ROLLOUT.md) — what is proven, the decisions behind it, and a
-step-by-step for putting it on a repo.
+- **This repo must stay public**, or every consumer needs a
+  `TOOLING_REPO_TOKEN` secret to check out the scripts.
+- **Private feeds are untested.** Azure Artifacts lookups are implemented and
+  documented but no private feed has been pointed at yet.
+- **The sheet only works if someone reads it.** Nothing here opens PRs or
+  otherwise acts on drift; it is a report.
+- The tool is proven against public fixtures, not your layouts. Run the first
+  pass on a real repo with `dry-run: true` and read the `Manifest` column
+  before trusting the numbers.
 
 ## Local development
 

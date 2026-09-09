@@ -1,0 +1,20 @@
+{
+  "npm": [
+    { "name": "react" },
+    { "name": "@mui/material" },
+    { "name": "typescript" },
+    { "name": "@sal/login", "source": "private" }
+  ],
+  "nuget": [
+    { "name": "Microsoft.EntityFrameworkCore.SqlServer" },
+    { "name": "Npgsql.EntityFrameworkCore.PostgreSQL" },
+    { "name": "Serilog.AspNetCore" },
+    { "name": "Hangfire.Core" },
+    { "name": "GitVersion.MsBuild" },
+    { "name": "Sandfield.WebAPI", "source": "private" }
+  ],
+  "defaults": {
+    "npmManifests": ["src/**/package.json"],
+    "nugetManifests": ["src/**/*.csproj"]
+  }
+}

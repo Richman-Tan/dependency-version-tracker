@@ -1,0 +1,21 @@
+{
+  "npm": [
+    { "name": "react" },
+    { "name": "react-dom" },
+    { "name": "@mui/material" },
+    { "name": "@tanstack/react-query" },
+    { "name": "typescript" },
+    { "name": "vite", "manifests": ["apps/Portal.Web/ClientApp/package.json"] },
+    { "name": "@sal/portal", "source": "private" }
+  ],
+  "nuget": [
+    { "name": "Microsoft.EntityFrameworkCore.SqlServer" },
+    { "name": "Serilog.AspNetCore" },
+    { "name": "Swashbuckle.AspNetCore" },
+    { "name": "Sandfield.Portal", "source": "private" }
+  ],
+  "defaults": {
+    "npmManifests": ["apps/**/package.json"],
+    "nugetManifests": ["apps/**/*.csproj"]
+  }
+}

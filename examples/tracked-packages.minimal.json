@@ -1,0 +1,13 @@
+{
+  "npm": [
+    { "name": "react" },
+    { "name": "typescript" }
+  ],
+  "nuget": [
+    { "name": "Serilog.AspNetCore" }
+  ],
+  "defaults": {
+    "npmManifests": ["package.json"],
+    "nugetManifests": ["**/*.csproj"]
+  }
+}
